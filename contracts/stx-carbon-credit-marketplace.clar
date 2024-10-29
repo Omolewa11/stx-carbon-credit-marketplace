@@ -69,3 +69,85 @@
 (define-read-only (get-listing (listing-id uint))
   (map-get? listings { listing-id: listing-id })
 )
+
+
+;; Public functions
+
+;; Function to create a new listing for selling credits
+(define-public (create-listing (credit-id uint) 
+                             (amount uint) 
+                             (price-per-credit uint))
+  (let (
+    (listing-id (var-get next-listing-id))
+    (seller-balance (get amount (get-balance tx-sender)))
+  )
+    ;; Validate inputs and balances
+    (asserts! (> amount u0) err-invalid-metadata)
+    (asserts! (> price-per-credit u0) err-invalid-price)
+    (asserts! (>= seller-balance amount) err-insufficient-balance)
+    (asserts! (is-some (get-credit-info credit-id)) err-invalid-metadata)
+
+    ;; Create a new active listing with the provided data
+    (map-set listings
+      { listing-id: listing-id }
+      {
+        seller: tx-sender,
+        credit-id: credit-id,
+        amount: amount,
+        price-per-credit: price-per-credit,
+        active: true
+      }
+    )
+    ;; Increment the listing ID for the next listing
+    (var-set next-listing-id (+ listing-id u1))
+    (ok listing-id)
+  )
+)
+
+;; Function to cancel a listing
+(define-public (cancel-listing (listing-id uint))
+  (let ((listing (unwrap! (get-listing listing-id) err-listing-not-found)))
+    ;; Ensure only the seller can cancel their own listing
+    (asserts! (is-eq tx-sender (get seller listing)) err-unauthorized)
+    ;; Ensure listing is active before cancellation
+    (asserts! (get active listing) err-listing-not-found)
+
+    ;; Mark the listing as inactive
+    (map-set listings
+      { listing-id: listing-id }
+      (merge listing { active: false })
+    )
+    (ok true)
+  )
+)
+
+;; Function for users to purchase credits from a listing
+(define-public (purchase-credits (listing-id uint))
+  (let (
+    (listing (unwrap! (get-listing listing-id) err-listing-not-found))
+    (total-price (* (get price-per-credit listing) (get amount listing)))
+  )
+    ;; Ensure the listing is active before purchase
+    (asserts! (get active listing) err-listing-not-found)
+
+    ;; Transfer STX from buyer to seller
+    (try! (stx-transfer? total-price tx-sender (get seller listing)))
+
+    ;; Update balances for seller and buyer
+    (map-set credit-balances
+      { owner: (get seller listing) }
+      { amount: (- (get amount (get-balance (get seller listing))) (get amount listing)) }
+    )
+    (map-set credit-balances
+      { owner: tx-sender }
+      { amount: (+ (get amount (get-balance tx-sender)) (get amount listing)) }
+    )
+
+    ;; Mark listing as inactive after purchase
+    (map-set listings
+      { listing-id: listing-id }
+      (merge listing { active: false })
+    )
+    (ok true)
+  )
+)

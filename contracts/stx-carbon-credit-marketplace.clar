@@ -199,3 +199,49 @@
     (ok true)
   )
 )
+
+
+(define-public (report-credit-issue (credit-id uint) (description (string-ascii 256)))
+  (let ((credit-info (get-credit-info credit-id)))
+    (asserts! (is-some credit-info) err-invalid-metadata)
+
+    ;; TODO: Implement reporting logic, e.g., store report in a map
+    (print description)
+    (ok true)
+  )
+)
+
+
+;; Function to mint new credits - only callable by the contract owner
+(define-public (mint-credits (amount uint) 
+                           (vintage-year uint)
+                           (verification-standard (string-ascii 64))
+                           (project-type (string-ascii 64)))
+  (let ((credit-id (var-get next-credit-id)))
+    ;; Ensure only the contract owner can mint new credits
+    (if (is-eq tx-sender contract-owner)
+      (begin
+        ;; Record metadata for the new credit type
+        (map-set credit-metadata
+          { credit-id: credit-id }
+          {
+            issuer: tx-sender,
+            vintage-year: vintage-year,
+            verification-standard: verification-standard,
+            project-type: project-type,
+            amount: amount
+          }
+        )
+        ;; Update contract owner's balance with the new credits
+        (map-set credit-balances
+          { owner: tx-sender }
+          { amount: (+ (get amount (get-balance tx-sender)) amount) }
+        )
+        ;; Increment the credit ID for the next issuance
+        (var-set next-credit-id (+ credit-id u1))
+        (ok credit-id)
+      )
+      err-owner-only ;; Error if sender is not the contract owner
+    )
+  )
+)

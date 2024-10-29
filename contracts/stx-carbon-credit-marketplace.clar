@@ -151,3 +151,51 @@
     (ok true)
   )
 )
+
+
+;; Function to transfer credits from one user to another
+(define-public (transfer-credits (recipient principal) (amount uint))
+  (let ((sender-balance (get amount (get-balance tx-sender))))
+    ;; Validate sender's balance and recipient's authorization
+    (asserts! (>= sender-balance amount) err-insufficient-balance)
+    (asserts! (is-authorized? recipient) err-unauthorized)
+
+    ;; Update balances for sender and recipient
+    (map-set credit-balances
+      { owner: tx-sender }
+      { amount: (- sender-balance amount) }
+    )
+    (map-set credit-balances
+      { owner: recipient }
+      { amount: (+ (get amount (get-balance recipient)) amount) }
+    )
+    (ok true)
+  )
+)
+
+;; Helper function to check if a recipient is authorized to receive credits
+(define-private (is-authorized? (principal principal))
+  ;; Placeholder for any authorization checks (e.g., a whitelist)
+  true
+)
+
+
+
+(define-public (update-listing (listing-id uint) (new-amount uint) (new-price-per-credit uint))
+  (let ((listing (unwrap! (get-listing listing-id) err-listing-not-found)))
+    (asserts! (is-eq tx-sender (get seller listing)) err-unauthorized)
+    (asserts! (get active listing) err-listing-not-active)
+    (asserts! (> new-amount u0) err-invalid-metadata)
+    (asserts! (> new-price-per-credit u0) err-invalid-price)
+
+    (map-set listings
+      { listing-id: listing-id }
+      (merge listing 
+        { 
+          amount: new-amount,
+          price-per-credit: new-price-per-credit
+        })
+    )
+    (ok true)
+  )
+)
